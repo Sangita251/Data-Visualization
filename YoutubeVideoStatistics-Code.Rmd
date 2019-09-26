@@ -1,0 +1,305 @@
+---
+title: "Visualization 6th Assignment"
+author: "Sangita Sriram"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r setup1, warning=FALSE, include=FALSE}
+library(ggthemes)
+library(treemap)
+library(rjson)
+library(jsonlite)
+library(formattable)
+library(sqldf)
+library(data.table)
+library(pastecs)
+library(dplyr)
+library(DT)
+library(ggplot2)
+library(plotrix)
+library(tidytext)
+library(stringr)
+library(tm)
+```
+
+```{r data_cleaning, warning=FALSE,include=FALSE}
+
+canadaData <- read.csv("CAvideos.csv",header = TRUE)
+usaData <- read.csv("USvideos.csv",header = TRUE)
+indiaData <- read.csv("INvideos.csv",header = TRUE)
+
+#Checking for NA values
+sum(is.na(canadaData))
+sum(is.na(usaData))
+sum(is.na(indiaData))
+#No NA values
+
+#Getting the Category ID and Category title from a separate json file
+CanadaCategory <- fromJSON("CA_category_id.json", flatten = TRUE)
+CanadaCategorydf <- as.data.frame(CanadaCategory)
+CanadaCategorydf <- CanadaCategorydf[,c("items.id","items.snippet.title")]
+
+
+USCategory <- fromJSON("US_category_id.json", flatten = TRUE)
+USCategorydf <- as.data.frame(USCategory)
+USCategorydf <- USCategorydf[,c("items.id","items.snippet.title")]
+
+
+IndiaCategory <- fromJSON("India_cat_id.json", flatten = TRUE)
+IndiaCategorydf <- as.data.frame(IndiaCategory)
+IndiaCategorydf <- IndiaCategorydf[,c("items.id","items.snippet.title")]
+
+#Renaming category id and category title
+colnames(CanadaCategorydf)[1] <- "category_id"
+colnames(USCategorydf)[1] <- "category_id"
+colnames(IndiaCategorydf)[1] <- "category_id"
+
+colnames(CanadaCategorydf)[2] <- "category_title"
+colnames(USCategorydf)[2] <- "category_title"
+colnames(IndiaCategorydf)[2] <- "category_title"
+
+#Converting category id from the json file to integer format
+CanadaCategorydf$category_id <- as.integer(CanadaCategorydf$category_id)
+IndiaCategorydf$category_id <- as.integer(IndiaCategorydf$category_id)
+USCategorydf$category_id <- as.integer(USCategorydf$category_id)
+
+#Joining category title from the json file to the main data set based on category id
+Canada <- left_join(canadaData, CanadaCategorydf, by="category_id")
+USA <- left_join(usaData, USCategorydf, by="category_id")
+India <- left_join(indiaData, IndiaCategorydf, by="category_id")
+
+#Checking for NA values after combining the two data frames. There are NA values in two data frames.
+sum(is.na(Canada)) #69
+sum(is.na(USA)) #0
+sum(is.na(India)) #41
+
+#Removing rows that have NA values, because we don't have the information of category title for that category id and we can not replace it with any other values, because these are absolute values.
+Canada <- na.omit(Canada,Canada$category_title)
+India <- na.omit(India,India$category_title)
+
+#Descriptive Statistics
+stat.desc(Canada,basic = FALSE)
+
+#Removing rows that have comments disabled, ratings disabled and videos that were removed
+Canada <- subset(Canada,(toupper(Canada$video_error_or_removed)=="FALSE" & toupper(Canada$ratings_disabled) == "FALSE" & toupper(Canada$comments_disabled) == "FALSE"))
+
+#ADDING A NEW COLUMN COUNTRY WITH VALUE CANADA
+Canada$country<-"Canada"
+
+
+India <- subset(India,(toupper(India$video_error_or_removed)=="FALSE" & toupper(India$ratings_disabled) == "FALSE" & toupper(India$comments_disabled) == "FALSE"))
+
+#ADDING A NEW COLUMN COUNTRY WITH VALUE INDIA
+India$country <-"India"
+
+USA <- subset(USA,(toupper(USA$video_error_or_removed)=="FALSE" & toupper(USA$ratings_disabled) == "FALSE" & toupper(USA$comments_disabled) == "FALSE"))
+
+#ADDING A NEW COLUMN COUNTRY WITH VALUE USA
+USA$country <- "USA"
+
+
+#Getting the unique video sequence id, title based on the latest trending date/maximum number of views. The same video's id sometimes appears more than once, because it was trending on more than one day. 
+CanadaViews <- arrange(Canada, desc(Canada$views))
+USAViews <- arrange(USA, desc(USA$views))
+IndiaViews <- arrange(India, desc(India$views))
+
+UniqueCanadaViews <- CanadaViews[match(unique(CanadaViews$video_id), CanadaViews$video_id),]
+
+UniqueUSAViews <- USAViews[match(unique(USAViews$video_id), USAViews$video_id),]
+
+UniqueIndiaViews <- IndiaViews[match(unique(IndiaViews$video_id), IndiaViews$video_id),]
+
+
+
+#TOP 10 VIEWS, LIKES, COMMENTS OF CANADA
+CanadaLikes <- arrange(UniqueCanadaViews, desc(UniqueCanadaViews$likes))
+
+CanadaComments <- arrange(UniqueCanadaViews, desc(UniqueCanadaViews$comment_count))
+
+
+UniqueCanadaViews1 <- head(UniqueCanadaViews,10)
+TopCanadaLikes<- head(CanadaLikes,10)
+TopCanadaComments<-head(CanadaComments,10)
+
+#Creating a dataset by combining everything
+TopVideosCanada <- as.data.frame(rbind(TopCanadaLikes,TopCanadaComments))
+
+```
+
+```{r code, warning=FALSE,include=FALSE,echo=FALSE}
+TopVideosCanadaTable = TopVideosCanada[, c(3, 4, 9, 11)] 
+colnames(TopVideosCanadaTable) = c("TITLE", "CHANNEL TITLE","LIKES","COMMENTS")
+
+#Creating a table with all the views, comments and likes and varying the colours based on their counts
+widgetCanada = formattable(TopVideosCanadaTable, list(
+	LIKES = color_bar('red'),
+	COMMENTS = color_bar('orange')
+))
+
+#TOP 10 OF USA
+USALikes <- arrange(UniqueUSAViews, desc(UniqueUSAViews$likes))
+USAComments <- arrange(UniqueUSAViews, desc(UniqueUSAViews$comment_count))
+
+UniqueUSAViews1 <- head(UniqueUSAViews,10)
+UniqueUSALikes1<- head(USALikes,10)
+UniqueUSAComments1<-head(USAComments,10)
+
+TopVideosUSA <- rbind(UniqueUSALikes1,UniqueUSAComments1)
+
+TopVideosUSATable = TopVideosUSA[, c(3, 4, 9, 11)] 
+colnames(TopVideosUSATable) = c("TITLE", "CHANNEL TITLE","LIKES","COMMENTS")
+
+#Creating a table with all the views, comments and likes and varying the colours based on their counts
+widgetUSA = formattable(TopVideosUSATable, list(
+	LIKES = color_bar('red'),
+	COMMENTS = color_bar('darkblue')
+))
+widgetUSA
+
+
+#TOP 10 OF INDIA
+IndiaLikes <- arrange(UniqueIndiaViews, desc(UniqueIndiaViews$likes))
+IndiaComments <- arrange(UniqueIndiaViews, desc(UniqueIndiaViews$comment_count))
+
+
+UniqueIndiaViews1 <- head(UniqueIndiaViews,10)
+UniqueIndiaLikes1<- head(IndiaLikes,10)
+UniqueIndiaComments1<-head(IndiaComments,10)
+
+TopVideosIndia <- rbind(UniqueIndiaLikes1,UniqueIndiaComments1)
+
+TopVideosIndiaTable = TopVideosIndia[, c(3, 4, 9, 11)] 
+colnames(TopVideosIndiaTable) = c("TITLE", "CHANNEL TITLE","LIKES","COMMENTS")
+
+#Creating a table with all the views, comments and likes and varying the colours based on their counts
+widgetIndia = formattable(TopVideosIndiaTable, list(
+	LIKES = color_bar('green'),
+	COMMENTS = color_bar('orange')
+))
+widgetIndia
+#COMBINING ALL THE RECORDS OF THE MOST VIEWED VIDEOS FROM EVERY COUNTRY
+TopViewedVideos<- rbind(head(UniqueUSAViews1,5),head(UniqueCanadaViews1,5),head(UniqueIndiaViews1,5))
+
+
+#This is done so that, the most viewed video and its title will be highlighted with red colour separately
+topViewed <- TopViewedVideos %>%
+  group_by(country) %>%
+  mutate(color = max(views) == views)
+
+#This is done so that scientific notation representation will not appear
+options(scipen = 999)
+
+```
+
+```{r tables, warning=FALSE,echo=FALSE}
+
+widgetCanada
+widgetIndia
+widgetUSA
+```
+
+
+```{r FIRST_VISUALIZATION, warning=FALSE,echo=FALSE}
+
+
+#First visualization
+ggplot(topViewed, aes(reorder(title,-views),views,fill=views))+ facet_grid(~country,scales = "free")+ geom_bar(stat="identity",aes(color = color))+theme(axis.text.x = element_text(angle = 45,hjust = 1)) +scale_color_manual(values = c(NA, "red"))+ labs(title="Top 5 Most Viewed Videos in each Country")+xlab(NULL)+ylab(NULL)
+
+#previous iterations
+
+#1
+ggplot(topViewed, aes(y=reorder(title,-views),x=views))+ facet_grid(country~.)+ geom_bar(stat="identity") + labs(title="Top 10 Most Viewed Videos in each Country")
+
+#2
+ggplot(topViewed, aes(y=reorder(title,-views),x=views))+ facet_grid(~country)+ geom_bar(stat="identity") + labs(title="Top 10 Most Viewed Videos in each Country")+xlab(NULL)+ylab(NULL)
+
+#3
+ggplot(topViewed, aes(reorder(title,-views),views))+ facet_grid(~country)+ geom_bar(stat="identity")+theme(axis.text.x = element_text(hjust = 1)) +  labs(title="Top 10 Most Viewed Videos in each Country")+xlab(NULL)+ylab(NULL)+ geom_text(aes(label = views, color=I('red')), size = 3, hjust =1,angle=90)
+
+```
+
+```{r second_visualization, warning=FALSE, echo=FALSE}
+
+#Second visualizaition
+
+#Grouping by based on best channels - canada
+
+cangroup <- group_by(UniqueCanadaViews, channel_title,country)
+
+channelCanada <- summarise(cangroup, totalviews = sum(views)) %>% arrange(desc(totalviews)) %>% head(10)
+
+#Grouping by based on best channels - usa
+
+usagroup <- group_by(UniqueUSAViews, channel_title,country)
+
+channelUSA <- summarise(usagroup, totalviews = sum(views)) %>% arrange(desc(totalviews)) %>% head(10)
+
+#Grouping by based on best channels - india
+
+Indiagroup <- group_by(UniqueIndiaViews, channel_title,country)
+
+channelIndia <- summarise(Indiagroup, totalviews = sum(views)) %>% arrange(desc(totalviews)) %>% head(10)
+
+#Combining all the 10 best channels of each country to give us a spread-out bar plot
+TopChannels <- rbind(channelCanada,channelIndia,channelUSA)
+
+
+ggplot(TopChannels, aes(x = channel_title, y = totalviews, fill = country)) + geom_bar(stat = "identity", width = .6) + coord_flip() + labs(title="Most watched channels in all countries") + theme_tufte() + theme(plot.title = element_text(hjust = .5),axis.ticks = element_blank()) + scale_fill_brewer(palette = "Dark2") +xlab(NULL) +ylab(NULL)
+
+
+#Iteration
+
+ggplot(TopChannels, aes(x = channel_title, y = totalviews, fill = country)) + geom_bar(stat = "identity", width = .6) + labs(title="Most watched channels in all countries") + theme(plot.title = element_text(hjust = .5),axis.ticks = element_blank()) + scale_fill_brewer(palette = "Accent") +xlab(NULL) +ylab(NULL)
+
+
+```
+
+
+```{r Third visualization, warning=FALSE, echo=FALSE}
+
+#Combining ALL the top viewed videos (with unique video-id) from every country
+countries <- rbind(UniqueCanadaViews,UniqueUSAViews,UniqueIndiaViews)
+
+#Grouping it based on the category title watched in every country and getting the total sum of the views in that category title from that country
+BestCategory <- group_by(countries, category_title, country) %>% summarise(totalviews = sum(as.double(views)))
+
+
+treemap(BestCategory,
+       index=c("country", "category_title"),
+       vSize="totalviews",
+       vColor="totalviews",
+       type="value", title.legend = "",
+       title="Most watched categories by each country",
+       format.legend = list(scientific = FALSE, big.mark = " "),
+        palette=terrain.colors(7))
+
+#Iterations
+#1)
+treemap(BestCategory,
+       index=c("category_title"),
+       vSize="totalviews",
+       vColor="totalviews",
+       type="value",
+       format.legend = list(scientific = FALSE, big.mark = " ")) 
+
+#2)
+treemap(BestCategory,
+       index=c("country", "category_title"),
+       vSize="totalviews",
+       vColor="totalviews",
+       type="value",
+       title="Most watched categories by each country",
+       format.legend = list(scientific = FALSE, big.mark = " "),
+        palette="RdYlGn",
+        range=c(0,11000000000),           
+        mapping=c(0, 600000000, 11000000000)) 
+
+```
+
+
